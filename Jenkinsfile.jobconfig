@@ -1,0 +1,45 @@
+#!groovy
+pipeline {
+    agent { label 'master' }
+    stages {
+        
+        stage('Checkout') {
+                steps{
+                    checkout scm
+                }
+            }
+
+        stage('Check&Push changes to server') {
+            steps{
+                script {
+                    def out = sh script: 'job-config/diff.sh', returnStdout: true
+                    echo "Main config.xml - ${out}"
+                    if ( out.contains('Differences detected')) {
+                        sh('cp /var/lib/jenkins/jobs/Test-build/config.xml job-config/config.xml')
+                        echo "Config has been copied to the repo dir"            
+                        withCredentials([[$class: 'UsernamePasswordMultiBinding', 
+                            credentialsId: 'fe75daf8-b954-41a2-8b64-195b784c059b', 
+                            usernameVariable: 'GIT_USERNAME', 
+                            passwordVariable: 'GIT_PASSWORD']]) {
+                                sh('''
+                                    git config --global user.email "maxim.tacu@endava.com"
+                                    git config --global user.name "Jenkins"
+                                    git config --global push.default simple
+                                ''')
+                                sh("git commit -am 'Updated Job Config By Jenkins'")    
+                                sh('git push https://${GIT_USERNAME}:${GIT_PASSWORD}@bitbucket.endava.com/scm/seed/seed_poc-ci-jenkins.git HEAD:jobconfig')
+                        }   
+                        echo 'Changes pushed to repo'
+                    } else {
+                        echo 'No changes in main job config. Nothing to do here'
+                    }
+                }
+            }
+        }
+        stage('Clean Workspace') {
+            steps{
+                cleanWs()
+            }
+        }
+    }
+}
